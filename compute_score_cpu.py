@@ -64,21 +64,19 @@ def read_data_for_date_range_f00(end_date, variable):
             date_data_dict[date] = [data]
 
     # 计算每个日期的数据平均值并存储在新的字典中
-    # average_data_dict = {}
-
-    # for date, data_list in date_data_dict.items():
-    #     data_array = np.array(data_list)
-    #     average_data = np.mean(data_array, axis=0)
-    #     average_data_dict[date] = average_data
+    average_data_dict = {}
+    for date, data_list in date_data_dict.items():
+        data_array = np.array(data_list)
+        average_data = np.mean(data_array, axis=0)
+        average_data_dict[date] = average_data
 
     # 计算每个日期的数据平均值并存储在新的字典中
-    average_data_dict = {}
-
-    for date, data_list in date_data_dict.items():
-        # 將數據轉換為 PyTorch 張量並將其移至 GPU
-        data_array_tensor = torch.tensor(data_list, dtype=torch.float32).cuda()
-        average_data = torch.mean(data_array_tensor, dim=0).cpu().numpy()
-        average_data_dict[date] = average_data
+    # average_data_dict = {}
+    # for date, data_list in date_data_dict.items():
+    #     # 將數據轉換為 PyTorch 張量並將其移至 GPU
+    #     data_array_tensor = torch.tensor(data_list, dtype=torch.float32).cuda()
+    #     average_data = torch.mean(data_array_tensor, dim=0).cpu().numpy()
+    #     average_data_dict[date] = average_data
    
 
     # 打印或使用average_data_dict，它包含了每个日期的平均数据
@@ -96,7 +94,6 @@ def read_data_for_date_range_f00(end_date, variable):
 
 def read_data_for_dtg(dtg, step_range, variable):
     data_list = []
-    result = []
     while step_range <= 840:
         current_date_str = dtg.strftime('%Y%m%d%H')
         for ens in range(1, 31):
@@ -144,22 +141,20 @@ def read_data_for_dtg(dtg, step_range, variable):
         data_dict[key].append(data_item['data'])
 
     # 计算每组数据的平均值
-    # average_data_list = []
-    # for key, data_items in data_dict.items():
-    #     date, step_range = key
-    #     average_data = np.mean(data_items, axis=0)
-    #     average_data_list.append({'date': date, 'stepRange': step_range, 'average_data': average_data})
-
-    # 計算每組數據的平均值
     average_data_list = []
     for key, data_items in data_dict.items():
         date, step_range = key
-        # 將數據轉換為 PyTorch 張量並將其移至 GPU
-        data_items_tensor = torch.tensor(data_items, dtype=torch.float32).cuda()
-        average_data = torch.mean(data_items_tensor, dim=0).cpu().numpy()
+        average_data = np.mean(data_items, axis=0)
         average_data_list.append({'date': date, 'stepRange': step_range, 'average_data': average_data})
 
-
+    # 計算每組數據的平均值
+    # average_data_list = []
+    # for key, data_items in data_dict.items():
+    #     date, step_range = key
+    #     # 將數據轉換為 PyTorch 張量並將其移至 GPU
+    #     data_items_tensor = torch.tensor(data_items, dtype=torch.float32).cuda()
+    #     average_data = torch.mean(data_items_tensor, dim=0).cpu().numpy()
+    #     average_data_list.append({'date': date, 'stepRange': step_range, 'average_data': average_data})
 
     return average_data_list
 
@@ -173,15 +168,20 @@ def compute_rmse(data1, data2):
         raise ValueError("兩個數據形狀不匹配")
     
     # 計算均方根誤差（RMSE）
-    # rmse = sqrt(mean_squared_error(average_data1, data2_data))
+    rmse = sqrt(mean_squared_error(average_data1, data2_data))
  
-
     # 將average_data1和data2_data轉換為PyTorch張量並將它們移至GPU
-    average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32).cuda()
-    data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32).cuda()
+    # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32).cuda()
+    # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32).cuda()
 
-    # 計算均方根誤差（RMSE）
-    rmse = sqrt(F.mse_loss(average_data1_tensor, data2_data_tensor).item())
+    # # 計算均方根誤差（RMSE）
+    # rmse = sqrt(F.mse_loss(average_data1_tensor, data2_data_tensor).item())
+
+    # 修改為在 CPU 上進行計算
+    # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32)
+    # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32)
+    # # 計算均方根誤差（RMSE）
+    # rmse = sqrt(F.mse_loss(average_data1_tensor, data2_data_tensor).item())
 
     return rmse, fcst
 
@@ -200,15 +200,90 @@ def compute_rmse(data1, data2):
 
     # return rmse, fcst
 
+def compute_bias(data1, data2):
+    average_data1 = data1['average_data']
+    fcst = data1['stepRange']
+    data2_data = data2['data']
+    
+    # 確保兩個數據具有相同的形狀
+    if average_data1.shape != data2_data.shape:
+        raise ValueError("兩個數據形狀不匹配")
+    
+    # Calculate bias
+    bias = np.mean(average_data1 - data2_data)
+
+    return bias, fcst
+    
+    # average_data1 = data1['average_data']
+    # fcst = data1['stepRange']
+    # data2_data = data2['data']
+
+    # # 確保兩個數據具有相同的形狀
+    # if average_data1.shape != data2_data.shape:
+    #     raise ValueError("兩個數據形狀不匹配")
+
+    # # 將數據轉換為 PyTorch 張量並將其移至 GPU
+    # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32).cuda()
+    # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32).cuda()
+
+    # # 將數據轉換為 PyTorch 張量並將其移至 CPU
+    # # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32)
+    # # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32)
+   
+    # # 計算偏差
+    # bias_tensor = torch.mean(average_data1_tensor - data2_data_tensor)
+
+    # # 將偏差轉換回 NumPy 陣列
+    # bias = bias_tensor.cpu().numpy()
+
+    # return bias, fcst
+
+def compute_mae(data1, data2):
+    average_data1 = data1['average_data']
+    fcst = data1['stepRange']
+    data2_data = data2['data']
+    
+    # 確保兩個數據具有相同的形狀
+    if average_data1.shape != data2_data.shape:
+        raise ValueError("兩個數據形狀不匹配")
+    
+    # Calculate mae
+    mae = np.mean(np.abs(average_data1 - data2_data))
+    
+    return mae, fcst
+
+    # average_data1 = data1['average_data']
+    # fcst = data1['stepRange']
+    # data2_data = data2['data']
+
+    # # 確保兩個數據具有相同的形狀
+    # if average_data1.shape != data2_data.shape:
+    #     raise ValueError("兩個數據形狀不匹配")
+
+    # # 將數據轉換為 PyTorch 張量並將其移至 GPU
+    # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32).cuda()
+    # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32).cuda()
+
+    # # 將數據轉換為 PyTorch 張量並將其移至 CPU
+    # # average_data1_tensor = torch.tensor(average_data1, dtype=torch.float32)
+    # # data2_data_tensor = torch.tensor(data2_data, dtype=torch.float32)
+   
+    # # 計算平均絕對誤差（MAE）
+    # mae_tensor = torch.mean(torch.abs(average_data1_tensor - data2_data_tensor))
+
+    # # 將 MAE 轉換回 NumPy 陣列
+    # mae = mae_tensor.cpu().numpy()
+
+    # return mae, fcst
 
 # Check if CUDA (GPU support) is available
-if torch.cuda.is_available():
-    print("GPU is available.")
-else:
-    print("GPU is not available. Switching to CPU.")
+# if torch.cuda.is_available():
+#     print("GPU is available.")
+# else:
+#     print("GPU is not available. Switching to CPU.")
 
 # exit()
-# 記錄開始時間
+# 記錄開始時間W
 start_time = time.time()
 # Example usage:
 # Specify the initial dtg and initial step_range
@@ -252,6 +327,8 @@ for variable in variables:
     data_f00 = read_data_for_date_range_f00(dtg_str, variable)
 
     rmse_values = []
+    bias_values = []
+    mae_values = []
     for data1_dict in result:
         rmse, fcst = compute_rmse(data1_dict, data_f00[0])  # 假設data2只有一個字典
         rmse_values.append({
@@ -261,14 +338,37 @@ for variable in variables:
             'var': variable['shortName']
         })
 
-    # 创建一个Pandas DataFrame
-    df = pd.DataFrame(rmse_values)
+        bias, fcst = compute_bias(data1_dict, data_f00[0])  # Assuming data_f00 has only one dictionary
+        bias_values.append({
+            'bias': bias,
+            'fcst': fcst,
+            'level': variable['level'],
+            'var': variable['shortName']
+        })
+
+        mae, fcst = compute_mae(data1_dict, data_f00[0])  # Assuming data_f00 has only one dictionary
+        mae_values.append({
+            'mae': mae,
+            'fcst': fcst,
+            'level': variable['level'],
+            'var': variable['shortName']
+        })
+
+
+
+    # 創建Pandas DataFrame
+    df_rmse = pd.DataFrame(rmse_values)
+    df_bias = pd.DataFrame(bias_values)
+    df_mae = pd.DataFrame(mae_values)
 
     # 将DataFrame保存为以空白分隔的文本文件
-    output_file = f'rmse_{variable["shortName"]}_P{variable["level"]}_{dtg_str}.txt'
-    df.to_csv(output_file, sep=' ', index=False)
+    rmse_output_file = f'rmse_{variable["shortName"]}_P{variable["level"]}_{dtg_str}.txt'
+    bias_output_file = f'bias_{variable["shortName"]}_P{variable["level"]}_{dtg_str}.txt'
+    mae_output_file = f'mae_{variable["shortName"]}_P{variable["level"]}_{dtg_str}.txt'
+    df_rmse.to_csv(rmse_output_file, sep=' ', index=False)
+    df_bias.to_csv(bias_output_file, sep=' ', index=False)
+    df_mae.to_csv(mae_output_file, sep=' ', index=False)
 
-# rmse_values 中現在包含了每個data1字典的RMSE值
 # 記錄結束時間
 end_time = time.time()
 
