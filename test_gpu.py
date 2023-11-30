@@ -60,23 +60,55 @@ fcst = np.load("2023090500.npy")
 print('anl-->', anl.shape)
 print('fcst-->', fcst.shape)
 
+# 將NumPy數據轉換為PyTorch張量
+anl_tensor = torch.from_numpy(anl)
+fcst_tensor = torch.from_numpy(fcst)
 
-# Move NumPy arrays to PyTorch tensors on GPU
-anl_tensor = torch.tensor(anl[:,:,:,:], dtype=torch.float32).cuda()
-fcst_tensor = torch.tensor(fcst[:,0,:,:,:], dtype=torch.float32).cuda()
+# 將張量移動到GPU上
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# print('device--->', device)
+rmse = []
+mae = []
+bias = []
+for i in range(10):
+    nvtx.push_range("One Variable", domain="variable")
+    for j in range(0, 71, 2):
+        nvtx.push_range("Compute score", domain="compute_score")
+        aa = anl_tensor[:, i, :, :].to(device)
+        ff = fcst_tensor[:, i, j, :, :].to(device)
+        mse = F.mse_loss(ff, aa)
+        rmse_value = torch.sqrt(mse)
+        # print('i-->', rmse_value.item())  # 如果需要將結果轉換為 Python 數值
+        rmse.append(rmse_value.item())
+         # 計算 MAE
+        mae_value = F.l1_loss(ff, aa)
+        mae.append(mae_value.item())
+        # 計算 Bias
+        bias_value = torch.mean(ff - aa)
+        bias.append(bias_value.item())
 
+        nvtx.pop_range(domain="compute_score")
 
-# # Calculate the squared differences
-squared_diff = (anl_tensor - fcst_tensor) ** 2
+nvtx.push_range("Write to CSV", domain="write_to_csv")
+# 創建一個字典來保存指標數值
+metrics_values = {
+    'RMSE': rmse,
+    'MAE': mae,
+    'Bias': bias,
+}
 
-# # Calculate the mean along the specified dimensions
-# mse = torch.mean(squared_diff, dim=(0, 1, 2))
+# 將字典轉換為 DataFrame
+df_metrics = pd.DataFrame(metrics_values)
 
-# # Calculate the square root to obtain RMSE
-# rmse = torch.sqrt(mse)
+# 定義目標資料夾
+output_folder = "score"
 
-# # Move the resulting RMSE tensor back to CPU if you want to use it in CPU operations
-# rmse_cpu = rmse.cpu()
+# 如果目標資料夾不存在，則創建它
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
 
-# # Print the resulting RMSE tensor
-# print("RMSE:", rmse_cpu.item())
+# 將 DataFrame 寫入 txt 檔案
+txt_filename = os.path.join(output_folder, "metrics_results.txt")
+df_metrics.to_csv(txt_filename, sep=' ', index=False)
+
+print(f'Metrics results saved to {txt_filename}')
