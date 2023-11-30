@@ -9,6 +9,7 @@ import time
 from math import sqrt
 from collections import defaultdict
 from datetime import datetime, timedelta
+import nvtx
 
 path = os.getcwd()
 file_path = f'{path}/NCEPGEFS'
@@ -104,15 +105,15 @@ def read_data_for_dtg(dtg, step_range, variable):
                     pass
             else:
                 pass
-        inner_end_time = time.time()
-        inner_execution_time = inner_end_time - inner_start_time
-        print(f"inner_execution_time : {inner_execution_time} seconds")
+        # inner_end_time = time.time()
+        # inner_execution_time = inner_end_time - inner_start_time
+        # print(f"inner_execution_time : {inner_execution_time} seconds")
         dtg -= pd.Timedelta(hours=24)
         step_range += 24
     
-    outer_end_time = time.time()
-    outer_execution_time = outer_end_time - outer_start_time
-    print(f"outer_execution_time : {outer_execution_time} seconds")
+    # outer_end_time = time.time()
+    # outer_execution_time = outer_end_time - outer_start_time
+    # print(f"outer_execution_time : {outer_execution_time} seconds")
     
     data_dict = defaultdict(list)
 
@@ -169,12 +170,23 @@ variables = [
 ]
 
 for variable in variables:
+    nvtx.push_range("One Variable", domain="variable")
+    nvtx.push_range("Read DTG", domain="read_dtg")
+
     result = read_data_for_dtg(dtg, initial_step_range, variable)
+    nvtx.pop_range(domain="read_dtg")
+    nvtx.push_range("Read f00", domain="read_f00")
     data_f00 = read_data_for_date_range_f00(dtg_str, variable)
+    nvtx.pop_range(domain="read_f00")
+
 
     metrics_values = []
     for data1_dict in result:
+        nvtx.push_range("Compute score", domain="compute_score")
         metrics = compute_metrics(data1_dict, data_f00[0])
+        nvtx.pop_range(domain="compute_score")
+        nvtx.push_range("compute_score Result Append", domain="compute_score_r_append")
+
         metrics_values.append({
             'rmse': metrics[0],
             'bias': metrics[1].cpu().numpy(),
@@ -183,7 +195,9 @@ for variable in variables:
             'level': variable['level'],
             'var': variable['shortName']
         })
+        nvtx.pop_range(domain="compute_score_r_append")
 
+    nvtx.push_range("Write to CSV", domain="write_to_csv")
     df_metrics = pd.DataFrame(metrics_values)
 
     rmse_output_file = f'rmse_{variable["shortName"]}_P{variable["level"]}_{dtg_str}.txt'
@@ -193,6 +207,8 @@ for variable in variables:
     df_metrics[['rmse', 'fcst', 'level', 'var']].to_csv(rmse_output_file, sep=' ', index=False)
     df_metrics[['bias', 'fcst', 'level', 'var']].to_csv(bias_output_file, sep=' ', index=False)
     df_metrics[['mae', 'fcst', 'level', 'var']].to_csv(mae_output_file, sep=' ', index=False)
+    nvtx.pop_range(domain="write_to_csv")
+    nvtx.pop_range(domain="variable")
 
 end_time = time.time()
 execution_time = end_time - start_time
