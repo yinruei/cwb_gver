@@ -11,6 +11,10 @@ from math import sqrt
 from collections import defaultdict
 from datetime import datetime, timedelta
 import nvtx
+import properscoring
+
+# 記錄起始時間
+start_time = time.time()
 
 # variables = [
 #     {'typeOfLevel': 'isobaricInhPa', 'level': 250, 'shortName': 'u'},
@@ -66,7 +70,8 @@ fcst_tensor = torch.from_numpy(fcst)
 
 # 將張量移動到GPU上
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# print('device--->', device)
+# device = torch.device("cpu")
+print('device--->', device)
 rmse = []
 mae = []
 bias = []
@@ -112,3 +117,36 @@ txt_filename = os.path.join(output_folder, "metrics_results.txt")
 df_metrics.to_csv(txt_filename, sep=' ', index=False)
 
 print(f'Metrics results saved to {txt_filename}')
+
+
+
+# 假設你已經有實際觀測值和預測的機率，這裡使用隨機數生成
+y = torch.randint(0, 2, (30, 10, 71, 73, 144), dtype=torch.float32).cuda()  #  # 在 GPU 上生成實際觀測值
+y_preds = torch.rand(30, 10, 71, 73, 144).cuda()  #  # 在 GPU 上生成預測的機率
+
+# 計算 Brier Score
+losses = (y - y_preds) ** 2
+brier_score = losses.mean().item()
+
+print("Brier Score:", brier_score)
+
+# 假設你有觀測和預測的分布，這裡使用隨機數生成
+y_obs = torch.rand(30, 10, 71, 73, 144).cuda()  #  # 在 GPU 上生成實際觀測的分布
+y_probs = torch.rand(30, 10, 71, 73, 144).cuda()  #  # 在 GPU 上生成預測的分布
+
+# 計算 RPSS
+rpss = 1 - ((y_probs - y_obs) ** 2).sum(dim=1) / ((y_probs ** 2).sum(dim=1))
+
+print("RPSS:", rpss.mean().item())
+
+# 計算 CRPSS
+crpss = (1 - ((y_probs - y_obs) ** 2).sum(dim=1) / ((y_probs ** 2).sum(dim=1))).mean()
+
+print("CRPSS:", crpss.item())
+
+# 記錄結束時間
+end_time = time.time()
+
+# 計算總共花費的時間
+execution_time = end_time - start_time
+print(f"程式執行時間：{execution_time} 秒")
