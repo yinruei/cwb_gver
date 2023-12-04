@@ -4,6 +4,7 @@ import time
 import nvtx
 import jax
 import jax.numpy as jnp
+from sklearn.metrics import roc_auc_score
 
 
 IS_CPU = int(os.environ.get("IS_CPU", 0))
@@ -28,14 +29,18 @@ def compute_metrics(ff_arr, aa_arr):
     mae_score = jnp.mean(jnp.abs(ff_arr - aa_arr))
     # Bias
     bias_score = jnp.mean(ff_arr - aa_arr)
-    return mse_score, rmse_score, mae_score, bias_score
+
+    # Standard Deviation (as a measure of spread)
+    spread_score = jnp.std(ff_arr - aa_arr)
+
+    return mse_score, rmse_score, mae_score, bias_score, spread_score
 
 @jax.jit
 def vectorize_compute_metrics(ff_arr, aa_arr):
     vmapped = jax.vmap(compute_metrics, in_axes=(1, None))
-    mse_score, rmse_score, mae_score, bias_score = \
+    mse_score, rmse_score, mae_score, bias_score, spread_score = \
         vmapped(ff_arr, aa_arr)
-    return mse_score, rmse_score, mae_score, bias_score
+    return mse_score, rmse_score, mae_score, bias_score, spread_score
 
 anl_jnp_arr = jnp.asarray(anl)
 fcst_tensor = jnp.asarray(fcst)
@@ -43,16 +48,18 @@ fcst_tensor = jnp.asarray(fcst)
 rmse = []
 mae = []
 bias = []
+spread = []
 one_var_start_time = time.time()
 for i in range(10):
     if i == 1:
         one_var_start_after_compiling_time = time.time()
     nvtx.push_range("Compute score", domain="vmap_compute_score")
-    _, rmse_score, mae_score, bias_score = \
+    _, rmse_score, mae_score, bias_score, spread_score = \
         vectorize_compute_metrics(fcst_tensor[:, i, :, :, :], anl_jnp_arr[:, i, :, :])
     rmse.append(rmse_score.block_until_ready())
     mae.append(mae_score.block_until_ready())
     bias.append(bias_score.block_until_ready())
+    spread.append(spread_score.block_until_ready())
     nvtx.pop_range(domain="vmap_compute_score")
 one_var_end_time = time.time()
 one_var_time = one_var_end_time - one_var_start_time
@@ -67,12 +74,29 @@ def compute_predict_loss(pred, target, pred_obs, target_obs):
 
     rpss_score = jnp.mean(1 - jnp.sum((pred_obs - target_obs) ** 2, axis=1) / jnp.sum((pred_obs ** 2), axis=1))
     crpss_score = jnp.mean((1 - jnp.sum((pred_obs - target_obs) ** 2, axis=1) / np.sum((pred_obs ** 2), axis=1)))
-    return brier_score, rpss_score, crpss_score
+
+    # Calculate CRPS (Continuous Ranked Probability Score)
+    crps_score = jnp.mean(jnp.sum((pred_obs - target_obs) ** 2, axis=1))
+
+    # Brier Skill Score
+    bss_score = 1 - (crps_score / brier_score)
+
+    # Histogram Distribution calculation
+    histogram_bins = 10  # Choose an appropriate number of bins
+    hist_pred_obs, _ = jnp.histogram(pred_obs, bins=histogram_bins)
+    hist_target_obs, _ = jnp.histogram(target_obs, bins=histogram_bins)
+    histogram_score = jnp.mean((hist_pred_obs - hist_target_obs) ** 2)
+
+    return brier_score, bss_score, rpss_score, crpss_score, crps_score, histogram_score
 
 # 假設你已經有實際觀測值和預測的機率，這裡使用隨機數生成
 brier = []
 rpss = []
 crpss = []
+bss = []
+crps = []
+# roc = []
+histogram = []
 
 total_pred_loss_time = 0
 total_pred_loss_after_compiling_time = 0
@@ -89,11 +113,15 @@ for i in range(5): # Assume 10 set of data
 
     pred_loss_start_time = time.time()
     nvtx.push_range("Compute Pred Loss", domain="compute_pred_loss")
-    brier_score, rpss_score, crpss_score = compute_predict_loss(y_preds, y, y_obs_preds, y_obs)
+    brier_score, bss_score, rpss_score, crpss_score, crps_score, histogram_score = compute_predict_loss(y_preds, y, y_obs_preds, y_obs)
 
     brier.append(brier_score.block_until_ready())
     rpss.append(rpss_score.block_until_ready())
     crpss.append(crpss_score.block_until_ready())
+    bss.append(bss_score.block_until_ready())
+    crps.append(crps_score.block_until_ready())
+    # roc.append(roc_area_score.block_until_ready())
+    histogram.append(histogram_score.block_until_ready())
 
     nvtx.pop_range(domain="compute_pred_loss")
     pred_loss_end_time = time.time()
